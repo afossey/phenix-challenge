@@ -5,7 +5,6 @@ import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, OffsetDateTime}
 import java.util.concurrent.Executors
 
-import better.files.Dsl._
 import better.files.File
 import better.files.File._
 
@@ -39,9 +38,10 @@ object Top extends App {
   }
 
   /**
-   * Program main algo.
    * Limit : 2 cores CPU; RAM 512Mo
-   * This program assumes that a transaction file and 2 store references files can fit entirely into RAM
+   * This program assumes that a transaction file and 2 (= nb of CPU cores) store references files can fit into RAM.
+   * 10M TxLine => 360Mo
+   * 1M RefLine => 20Mo (x2)
    */
   private def runProgram = {
     val started = OffsetDateTime.now()
@@ -159,12 +159,13 @@ object Top extends App {
                            sortCriteria: (Aggregate, Aggregate) => Boolean,
                            limit: Int = 100) = {
     val output = File(getTopFileName(dateKey, storeId, category, limit) + ".data").createIfNotExists()
+
+    // print large number of lines that may not fit in memory
     aggregates.sortWith(sortCriteria)
       .take(limit)
       .map {
         case Aggregate(product, qty, ca) => s"$product|$qty|$ca"
-      }
-      .mkString("\n") >>: output
+      } |> { output.printLines(_) }
   }
 
   /**
@@ -225,17 +226,19 @@ object Top extends App {
       .sortWith {
         sortCriteria
       }
-      .take(100)
+      .take(limit)
       // destructure to string for output
       .map {
         case Aggregate(product, qty, ca) => s"$product|$qty|$ca"
-      }
-      .mkString("\n") >>: file
-    //    println(s"${file.name} - OK")
+      } |> { file.printLines(_) }
   }
 
   private def getTopFileName(dateKey: String, storeId: String, category: String, limit: Int) = {
     s"${outputDirPath}/top_${limit}_${category}_${storeId}_$dateKey"
   }
 
+
+  implicit class Pipe[T](val v: T) extends AnyVal {
+    def |>[U] (f: T => U) = f(v)
+  }
 }
